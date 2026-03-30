@@ -1,0 +1,205 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - uid: string (required)
+//   - email: string (required, email format)
+//   - displayName: string
+//   - photoURL: string
+//   - isMember: boolean (required)
+//   - isAdmin: boolean (optional)
+//   - invitedBy: string (uid)
+//   - createdAt: timestamp
+//
+// Collection: invites
+// Document ID: {inviteId}
+// Fields:
+//   - email: string (required, email format)
+//   - invitedBy: string (uid, required)
+//   - invitedByName: string
+//   - status: string (required, enum: ['pending', 'accepted'])
+//   - createdAt: timestamp
+//
+// Collection: messages
+// Document ID: {messageId}
+// Fields:
+//   - text: string (optional, max 1000 chars)
+//   - senderId: string (uid, required)
+//   - senderName: string
+//   - senderPhoto: string
+//   - mediaUrl: string (optional)
+//   - mediaType: string (optional, enum: ['image', 'video', 'gif'])
+//   - replyToId: string (optional)
+//   - replyToText: string (optional)
+//   - replyToSenderName: string (optional)
+//   - readBy: list (uids, optional)
+//   - reactions: map (emoji to list of uids, optional)
+//   - createdAt: timestamp (required)
+//
+// Collection: directMessages
+// Document ID: {dmId}
+// Fields:
+//   - text: string (optional, max 1000 chars)
+//   - senderId: string (uid, required)
+//   - receiverId: string (uid, required)
+//   - participants: list (uids, required)
+//   - mediaUrl: string (optional)
+//   - mediaType: string (optional, enum: ['image', 'video', 'gif'])
+//   - readBy: list (uids, optional)
+//   - reactions: map (emoji to list of uids, optional)
+//   - createdAt: timestamp (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isMember() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isMember == true) || 
+         isAdmin());
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true) ||
+         (request.auth.token.email == "jamenya1988@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'isMember']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.isMember is bool &&
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('status' in data) || data.status in ['online', 'offline']) &&
+             (!('lastSeen' in data) || data.lastSeen is timestamp);
+    }
+
+    function isValidInvite(data) {
+      return data.keys().hasAll(['invitedBy', 'status']) &&
+             (!('email' in data) || isValidEmail(data.email)) &&
+             (!('invitedByName' in data) || data.invitedByName is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             data.invitedBy == request.auth.uid &&
+             data.status == 'pending';
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'createdAt']) &&
+             (data.get('text', '') is string || data.get('mediaUrl', '') is string) &&
+             (!('text' in data) || (data.text is string && data.text.size() <= 1000)) &&
+             data.senderId == request.auth.uid &&
+             data.createdAt == request.time &&
+             (!('mediaType' in data) || data.mediaType in ['image', 'video', 'gif']) &&
+             (!('replyToId' in data) || data.replyToId is string) &&
+             (!('replyToText' in data) || data.replyToText is string) &&
+             (!('replyToSenderName' in data) || data.replyToSenderName is string) &&
+             (!('readBy' in data) || (data.readBy is list && data.readBy.hasAll([request.auth.uid]))) &&
+             (!('reactions' in data) || data.reactions is map);
+    }
+
+    function isValidDirectMessage(data) {
+      return data.keys().hasAll(['senderId', 'receiverId', 'participants', 'createdAt']) &&
+             data.participants.hasAll([data.senderId, data.receiverId]) &&
+             data.participants.size() == 2 &&
+             data.senderId == request.auth.uid &&
+             data.createdAt == request.time &&
+             (!('text' in data) || (data.text is string && data.text.size() <= 1000)) &&
+             (!('mediaUrl' in data) || data.mediaUrl is string) &&
+             (!('mediaType' in data) || data.mediaType in ['image', 'video', 'gif']) &&
+             (!('readBy' in data) || (data.readBy is list && data.readBy.hasAll([request.auth.uid]))) &&
+             (!('reactions' in data) || data.reactions is map);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Admins can see all users, members can see themselves and those they invited
+      allow read: if isAdmin() || isOwner(userId) || (isMember() && resource.data.invitedBy == request.auth.uid);
+      
+      // Allow creation if the user is the first user (bootstrap) or if they have a pending invite
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false || isAdmin());
+      
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.isMember == resource.data.isMember &&
+                      (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == resource.data.get('isAdmin', false));
+      
+      // Only admins can promote others to admin
+      allow update: if isAdmin() && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isAdmin']) &&
+                      request.resource.data.isAdmin is bool;
+    }
+
+    match /invites/{inviteId} {
+      // Admins can see all invites, members can only see their own
+      allow read: if isAdmin() || (isMember() && resource.data.invitedBy == request.auth.uid);
+      
+      // Members can invite others
+      allow create: if isMember() && isValidInvite(request.resource.data);
+      
+      // Admins can revoke any invite, members can revoke their own
+      allow delete: if isAdmin() || (isMember() && resource.data.invitedBy == request.auth.uid);
+      
+      // System/User can update status when accepting (handled via logic)
+      allow update: if (isAdmin() || (isMember() && resource.data.invitedBy == request.auth.uid)) && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      
+      allow list: if isAdmin() || isMember();
+      allow get: if isAuthenticated(); 
+    }
+
+    match /messages/{messageId} {
+      allow read: if isMember();
+      allow create: if isMember() && isValidMessage(request.resource.data);
+      allow update: if isMember() && 
+                      (
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']) &&
+                         request.resource.data.readBy.hasAll(resource.data.get('readBy', [])) &&
+                         request.resource.data.readBy.hasAll([request.auth.uid])) ||
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
+                         request.resource.data.reactions is map)
+                      );
+      allow delete: if isMember() && resource.data.senderId == request.auth.uid;
+    }
+
+    match /directMessages/{dmId} {
+      allow read: if isMember() && request.auth.uid in resource.data.participants;
+      allow create: if isMember() && isValidDirectMessage(request.resource.data);
+      allow update: if isMember() && 
+                      request.auth.uid in resource.data.participants &&
+                      (
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']) &&
+                         request.resource.data.readBy.hasAll(resource.data.get('readBy', [])) &&
+                         request.resource.data.readBy.hasAll([request.auth.uid])) ||
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
+                         request.resource.data.reactions is map)
+                      );
+    }
+  }
+}

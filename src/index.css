@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@layer base {
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-white: #083344; /* cyan-950 */
+      --color-black: #ffffff;
+      
+      --color-neutral-50: #164e63; /* cyan-900 */
+      --color-neutral-100: #155e75; /* cyan-800 */
+      --color-neutral-200: #0e7490; /* cyan-700 */
+      --color-neutral-300: #0891b2; /* cyan-600 */
+      --color-neutral-400: #06b6d4; /* cyan-500 */
+      --color-neutral-500: #22d3ee; /* cyan-400 */
+      --color-neutral-600: #67e8f9; /* cyan-300 */
+      --color-neutral-700: #a5f3fc; /* cyan-200 */
+      --color-neutral-800: #cffafe; /* cyan-100 */
+      --color-neutral-900: #ecfeff; /* cyan-50 */
+    }
+  }
+}

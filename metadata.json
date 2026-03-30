@@ -1,0 +1,8 @@
+{
+  "name": "Oscret",
+  "description": "A secure, invite-only real-time chat application where members can invite new users.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

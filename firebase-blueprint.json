@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile and membership status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isMember": { "type": "boolean", "description": "Whether the user is a member of the chat" },
+        "isAdmin": { "type": "boolean", "description": "Whether the user has administrative privileges" },
+        "invitedBy": { "type": "string", "description": "UID of the user who invited them" },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "isMember"]
+    },
+    "invites": {
+      "title": "Invite",
+      "description": "Pending and used invitations",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "invitedBy": { "type": "string" },
+        "invitedByName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["invitedBy", "status"]
+    },
+    "messages": {
+      "title": "Message",
+      "description": "Chat messages with media and reply support",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderPhoto": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["image", "video", "gif"] },
+        "replyToId": { "type": "string" },
+        "replyToText": { "type": "string" },
+        "replyToSenderName": { "type": "string" },
+        "readBy": { "type": "array", "items": { "type": "string" }, "description": "Array of UIDs who have read the message" },
+        "reactions": { 
+          "type": "object", 
+          "description": "Map of emoji to array of user UIDs",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "createdAt"]
+    },
+    "directMessages": {
+      "title": "Direct Message",
+      "description": "Private messages between two users",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" }, "description": "Array of both participant UIDs" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["image", "video", "gif"] },
+        "readBy": { "type": "array", "items": { "type": "string" } },
+        "reactions": { 
+          "type": "object", 
+          "description": "Map of emoji to array of user UIDs",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "receiverId", "participants", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profiles"
+    },
+    "/invites/{inviteId}": {
+      "schema": "invites",
+      "description": "Invitations"
+    },
+    "/messages/{messageId}": {
+      "schema": "messages",
+      "description": "Chat messages"
+    },
+    "/directMessages/{dmId}": {
+      "schema": "directMessages",
+      "description": "Private messages"
+    }
+  }
+}
